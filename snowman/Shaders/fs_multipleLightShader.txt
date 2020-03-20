@@ -1,0 +1,118 @@
+#version 330 core
+out vec4 fragColor;
+
+struct Material {
+   
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+    float shininess;
+}; 
+
+struct Light {
+    float on;
+    vec3 position;
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
+
+
+struct SpotLight {
+    float on;
+    vec3 position;
+    vec3 direction;
+    float cutOff;
+    float outerCutOff;
+  
+    float constant;
+    float linear;
+    float quadratic;
+  
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;       
+};
+
+in vec3 aPos;
+in vec3 aNormal;
+in vec2 aTexCoord;
+
+uniform vec3 viewPos;
+uniform Light light;
+uniform SpotLight spotLight;
+uniform Material material; 
+uniform sampler2D first_texture;
+uniform sampler2D second_texture;
+
+
+// function prototypes
+vec3 CalcLight(Light light, vec3 norm, vec3 viewDir);
+vec3 CalcSpotLight(SpotLight light, vec3 norm, vec3 fragPos, vec3 viewDir);
+
+void main()
+{    
+    // properties
+    vec3 norm = normalize(aNormal);
+    vec3 viewDir = normalize(viewPos - aPos);
+    
+    // == =====================================================
+    // This works out the amount of light contributed by the spotlight and the static light
+    // == =====================================================
+    
+  
+    
+    //this calculate the static light hitting at any one point.
+    vec3 result = light.on * CalcLight(light, norm, viewDir); 
+    
+    // phase 2: calculates thes spotlight.
+    
+    result += spotLight.on * CalcSpotLight(spotLight, norm, aPos, viewDir);    
+    
+    fragColor = vec4(result, 1.0);
+}
+
+vec3 CalcLight(Light light, vec3 norm ,vec3 viewDir){
+// ambient
+  vec3 ambient = light.ambient * vec3(texture(first_texture, aTexCoord));
+
+  // diffuse
+
+  vec3 lightDir = normalize(light.position - aPos);  
+  float diff = max(dot(norm, lightDir), 0.0);
+  
+  vec3 diffuse = light.diffuse * diff * vec3(texture(first_texture, aTexCoord)); 
+  
+  // specular   
+  vec3 reflectDir = reflect(-lightDir, norm);
+  float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+  vec3 specular = light.specular * spec * vec3(texture(second_texture, aTexCoord));
+
+  return (ambient+diffuse+specular);
+}
+
+// calculates the color when using a spot light as defined by joey devries.
+vec3 CalcSpotLight(SpotLight spotlight, vec3 normal, vec3 fragPos, vec3 viewDir)
+{
+    vec3 lightDir = normalize(spotlight.position - fragPos);
+    // diffuse shading
+    float diff = max(dot(normal, lightDir), 0.0);
+    // specular shading
+    vec3 reflectDir = reflect(-lightDir, normal);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+    // attenuation
+    float distance = length(spotlight.position - fragPos);
+    float attenuation = 1.0 / (spotlight.constant + spotlight.linear * distance + spotlight.quadratic * (distance * distance));    
+    // spotlight intensity
+    float theta = dot(lightDir, normalize(-spotlight.direction)); 
+    float epsilon = spotlight.cutOff - spotlight.outerCutOff;
+    float intensity = clamp((theta - spotlight.outerCutOff) / epsilon, 0.0, 1.0);
+    // combine results
+    vec3 ambient = spotlight.ambient * vec3(texture(first_texture, aTexCoord));
+    vec3 diffuse = spotlight.diffuse * (diff) * vec3(texture(first_texture, aTexCoord));
+    vec3 specular = spotlight.specular * spec * vec3(texture(second_texture, aTexCoord));
+    ambient *= attenuation * intensity;
+    diffuse *= attenuation * intensity;
+    specular *= attenuation * intensity;
+    return (ambient+ diffuse+specular);
+}
